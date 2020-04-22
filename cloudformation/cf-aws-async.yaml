@@ -1,0 +1,229 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: EC2 Launch Template
+
+Parameters:
+  # Mandatory Parameters
+  # Optional Parameters
+
+  # Optional Naming parameters
+  # If not provided, name will be derived from StackName
+  WorkerIAMRoleName:
+    Type: String
+    Default: default
+  AppECRRepositoryName:
+    Type: String
+    # between 2 and 256 lowercase letters, numbers, hyphens, underscores, and forward slashes
+    AllowedPattern: '[a-z0-9-_/]{2,256}'
+    Default: default
+  DDBResultsTableName:
+    Type: String
+    Default: default
+  DDBEventsTableName:
+    Type: String
+    Default: default
+  S3DataSourceBucketName:
+    Type: String
+    Default: default
+  SQSRequestsQueueName:
+    Type: String
+    Default: default
+  SQSRequestsDLQName:
+    Type: String
+    Default: default
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Naming
+        Parameters:
+          - WorkerIAMRoleName
+          - AppECRRepositoryName
+          - DDBResultsTableName
+          - DDBEventsTableName
+          - S3DataSourceBucketName
+          - SQSRequestsQueueName
+          - SQSRequestsDLQName
+    ParameterLabels:
+      WorkerIAMRoleName: Name for the Worker Application IAM Role
+      AppECRRepositoryName: ECR Repository Name
+      WorkerDeploymentType: Application Deployment type - ECS or Fargate
+      DDBResultsTableName: Name of the DynamoDB Results Table
+      DDBEventsTableName: Name of the DynamoBD Events Table
+      S3DataSourceBucketName: Name of the Data Sources S3 Bucket
+      SQSRequestsQueueName: Name of the Requests SQS Queue
+      SQSRequestsDLQName: Name of the SQS Dead Letter Queue (DLQ) for the Requests SQS Queue
+
+Conditions:
+#  WorkerTypeFargate: !Equals [!Ref WorkerDeploymentType, fargate]
+  WorkerIAMRoleNameDefault: !Equals [!Ref WorkerIAMRoleName, default]
+  AppECRRepositoryNameDefault: !Equals [!Ref AppECRRepositoryName, default]
+  DDBResultsTableNameDefault: !Equals [!Ref DDBResultsTableName, default]
+  DDBEventsTableNameDefault: !Equals [!Ref DDBEventsTableName, default]
+  S3DataSourceBucketNameDefault: !Equals [!Ref S3DataSourceBucketName, default]
+  SQSRequestsQueueNameDefault: !Equals [!Ref SQSRequestsQueueName, default]
+  SQSRequestsDLQNameDefault: !Equals [!Ref SQSRequestsDLQName, default]
+
+Outputs:
+  WorkerIAMRoleName:
+    Value: !Ref WorkerIAMRole
+  WorkerIAMRoleArn:
+    Value: !GetAtt WorkerIAMRole.Arn
+  AppECRRepositoryArn:
+    Value: !GetAtt AppECRRepository.Arn
+  DDBResultsTableArn:
+    Value: !GetAtt DDBResultsTable.Arn
+  DDBEventsTableArn:
+    Value: !GetAtt DDBEventsTable.Arn
+  S3DataSourceBucketArn:
+    Value: !GetAtt S3DataSourceBucket.Arn
+  SQSRequestsQueueUrl:
+    Value: !Ref SQSRequestsQueue
+  SQSRequestsQueueArn:
+    Value: !GetAtt SQSRequestsQueue.Arn
+  SQSRequestsQueueName:
+    Value: !GetAtt SQSRequestsQueue.QueueName
+  SQSRequestsDLQUrl:
+    Value: !Ref SQSRequestsDLQ
+  SQSRequestsDLQArn:
+    Value: !GetAtt SQSRequestsDLQ.Arn
+  SQSRequestsDLQName:
+    Value: !GetAtt SQSRequestsDLQ.QueueName
+
+Resources:
+  WorkerIAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !If [WorkerIAMRoleNameDefault, !Sub '${AWS::StackName}-worker-role', !Ref WorkerIAMRoleName]
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+        Version: 2012-10-17
+      Policies:
+        - PolicyName: 'LogsPolicy'
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: '*'
+        - PolicyName: 'ECRPolicy'
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ecr:GetAuthorizationToken'
+                  - 'ecr:BatchCheckLayerAvailability'
+                  - 'ecr:GetDownloadUrlForLayer'
+                  - 'ecr:BatchGetImage'
+                Resource:
+                  - !GetAtt AppECRRepository.Arn
+        - PolicyName: 'SQSPolicy'
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'sqs:DeleteMessage'
+                  - 'sqs:DeleteMessageBatch'
+                  - 'sqs:ListDeadLetterSourceQueues'
+                  - 'sqs:ReceiveMessage'
+                Resource:
+                  - !GetAtt SQSRequestsQueue.Arn
+                  - !GetAtt SQSRequestsDLQ.Arn
+              - Effect: Allow
+                Action:
+                  - 'sqs:SendMessage'
+                  - 'sqs:SendMessageBatch'
+                Resource:
+                  - !GetAtt SQSRequestsDLQ.Arn
+        - PolicyName: 'S3Policy'
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:GetBucketAcl'
+                  - 's3:GetBucketLocation'
+                  - 's3:HeadBucket'
+                  - 's3:ListBucket'
+                Resource:
+                  - !GetAtt S3DataSourceBucket.Arn
+              - Effect: Allow
+                Action:
+                  - 's3:GetObject'
+                  - 's3:PutObject'
+                Resource:
+                  - !Sub '${S3DataSourceBucket.Arn}/*'
+        - PolicyName: 'DDBPolicy'
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'dynamodb:DeleteItem'
+                  - 'dynamodb:DescribeTable'
+                  - 'dynamodb:GetItem'
+                  - 'dynamodb:GetRecords'
+                  - 'dynamodb:PutItem'
+                  - 'dynamodb:Query'
+                  - 'dynamodb:Scan'
+                  - 'dynamodb:UpdateItem'
+                Resource:
+                  - !GetAtt DDBResultsTable.Arn
+                  - !GetAtt DDBEventsTable.Arn
+
+  AppECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !If [AppECRRepositoryNameDefault, !Sub '${AWS::StackName}-${AWS::Region}-ecr-repo', !Ref AppECRRepositoryName]
+
+  DDBResultsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !If [DDBResultsTableNameDefault, !Sub '${AWS::StackName}-ddb-results', !Ref DDBResultsTableName]
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: RequestId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: 'RequestId'
+          KeyType: HASH
+
+  DDBEventsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !If [DDBEventsTableNameDefault, !Sub '${AWS::StackName}-ddb-events', !Ref DDBEventsTableName]
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: ObjectId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: 'ObjectId'
+          KeyType: HASH
+
+  S3DataSourceBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !If [S3DataSourceBucketNameDefault, !Sub '${AWS::StackName}-${AWS::Region}-s3-data', !Ref S3DataSourceBucketName]
+
+  SQSRequestsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !If [SQSRequestsQueueNameDefault, !Sub '${AWS::StackName}-${AWS::Region}-sqs-requests', SQSRequestsQueueName]
+      MessageRetentionPeriod: 86400 # 24h
+
+  SQSRequestsDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !If [SQSRequestsQueueNameDefault, !Sub '${AWS::StackName}-${AWS::Region}-sqs-requests-dlq', !Sub '${SQSRequestsQueueName}-dlq']
+      MessageRetentionPeriod: 1209600 # 14d

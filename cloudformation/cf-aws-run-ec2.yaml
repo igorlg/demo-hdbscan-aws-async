@@ -1,0 +1,53 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: EC2 Launch Template
+
+Parameters:
+  VPCId:
+    Type: AWS::EC2::VPC::Id
+
+Outputs:
+  IAMRoleName:
+    Value: !Ref IAMRole
+  IAMRoleArn:
+    Value: !GetAtt IAMRole.Arn
+
+Resources:
+  IAMProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub '${AWS::StackName}EC2Role'
+      Path: /
+      Roles:
+        - !Ref IAMRole
+  IAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}EC2Role'
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+        Version: 2012-10-17
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/CloudWatchLogsFullAccess'
+      Policies:
+        - PolicyName: 'SSMPolicy'
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ssmmessages:CreateControlChannel'
+                  - 'ssmmessages:CreateDataChannel'
+                  - 'ssmmessages:OpenControlChannel'
+                  - 'ssmmessages:OpenDataChannel'
+                  - 's3:GetEncryptionConfiguration'
+                  - 'ssm:UpdateInstanceInformation'
+                  - 'ec2messages:*'
+                  - 'ssm:ListAssociations'
+                  - 'ssm:ListInstanceAssociations'
+                Resource: '*'

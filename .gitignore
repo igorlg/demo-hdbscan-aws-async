@@ -1,0 +1,14 @@
+# PyCharm
+.idea/
+
+# Vagrant
+.vagrant/
+
+# Python
+.python-version
+**/__pycache__
+**/*.pyc
+
+# Temporary
+tmp/
+
