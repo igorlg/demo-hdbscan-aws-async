@@ -8,6 +8,18 @@ import boto3
 import pandas as pd
 
 
+# Algorithm
+from algorithm import *
+# --------------------------------------------- #
+#  Both functions defined in algorithm.py
+# --------------------------------------------- #
+# def calculate_cluster(data, n_points, algo):
+#     pass
+#
+# def gen_results(cluster_points, local_csv_file):
+#     pass
+
+
 aws_region = os.environ.get('AWS_REGION', 'ap-southeast-2')
 sqs = boto3.client('sqs', region_name=aws_region)
 s3 = boto3.client('s3', region_name=aws_region)
@@ -79,19 +91,6 @@ def upload_results(req_id, csv_file):
 
     s3.upload_file(csv_file, s3_bucket, s3_csv_result_file)
     ddb_result.put_item(Item=ddb_result_item)
-
-
-def calculate_cluster(data, n_points, algo):
-    if algo == "OPTICS":
-        pass
-    else:
-        pass
-
-
-def gen_results(cluster_points, local_csv_file):
-    # Convert points to CSV
-    # Save CSV file to disk
-    pass
 
 
 def main(msg):
