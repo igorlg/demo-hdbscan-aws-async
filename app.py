@@ -6,11 +6,9 @@ from uuid import uuid4
 # AWS
 import boto3
 import pandas as pd
-# Utils
-from utils import EC2Meta
 
 
-aws_region = os.environ['AWS_REGION']
+aws_region = os.environ.get('AWS_REGION', 'ap-southeast-2')
 sqs = boto3.client('sqs', region_name=aws_region)
 s3 = boto3.client('s3', region_name=aws_region)
 ddb_res = boto3.resource('dynamodb', region_name=aws_region)
@@ -21,9 +19,9 @@ req_queue_url = os.environ['SQS_REQUEST_QUEUE_URL']
 
 # S3
 data_file = os.environ['S3_DATA_FILE_NAME']
-s3_bucket = os.environ['S3_BUCKET_NA<E']
+s3_bucket = os.environ['S3_BUCKET_NAME']
 s3_data_file = os.path.join('data', data_file)
-local_data_path = os.environ['LOCAL_DATA_PATH']
+local_data_path = os.environ.get('LOCAL_DATA_PATH', '/app')
 local_data_file = os.path.join(local_data_path, data_file)
 
 # DynamoDB
@@ -35,7 +33,6 @@ ddb_result = ddb_res.Table(ddb_result_table)
 def put_metric(algo, operation, n_points, duration):
     item = {'ObjectId': str(uuid4()),
             'Algorithm': algo.upper(),
-            'InstanceType': EC2Meta.instance_type(),
             'Operation': operation,
             'NumPoints': Decimal(n_points),
             'Duration': Decimal(duration),
@@ -72,21 +69,29 @@ def dequeue():
         return None
 
 
-def upload_results(req_id, img_file, csv_file):
-    s3_img_result_file = os.path.join('results', os.path.basename(img_file))
+def upload_results(req_id, csv_file):
     s3_csv_result_file = os.path.join('results', os.path.basename(csv_file))
 
     ddb_result_item = {'RequestId': req_id,
-                       'ImageLocalFile': img_file,
-                       'ImageS3File': {'key': s3_img_result_file, 'bucket': s3_bucket},
                        'CSVLocalFile': csv_file,
                        'CSVS3File': {'key': s3_csv_result_file, 'bucket': s3_bucket},
                        }
 
-    s3.upload_file(img_file, s3_bucket, s3_img_result_file)
     s3.upload_file(csv_file, s3_bucket, s3_csv_result_file)
     ddb_result.put_item(Item=ddb_result_item)
-    os.remove(img_file)
+
+
+def calculate_cluster(data, n_points, algo):
+    if algo == "OPTICS":
+        pass
+    else:
+        pass
+
+
+def gen_results(cluster_points, local_csv_file):
+    # Convert points to CSV
+    # Save CSV file to disk
+    pass
 
 
 def main(msg):
@@ -94,14 +99,12 @@ def main(msg):
     request_id = msg['RequestId']  # msg['RequestId'] to track requests...
     algorithm = msg.get('Algorithm', 'OPTICS')
     number_of_points = msg.get('NumberOfPoints', 25000)
-    local_img_file = os.path.join(local_data_path, '{}.png'.format(request_id))
     local_csv_file = os.path.join(local_data_path, '{}.csv'.format(request_id))
 
     # Run Algorithm
     cluster_points = calculate_cluster(data=df, n_points=number_of_points, algo=algorithm)
-    gen_results(cluster_points, local_img_file, local_csv_file,
-                'Full data set vs {} reduced set'.format(algorithm.upper()))
-    upload_results(request_id, local_img_file, local_csv_file)
+    gen_results(cluster_points, local_csv_file)
+    upload_results(request_id, local_csv_file)
 
 
 if __name__ == '__main__':
