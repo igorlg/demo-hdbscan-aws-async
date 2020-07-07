@@ -1,4 +1,9 @@
-def calculate_cluster(data, n_points, algo='OPTICS'):
+import pandas as pd
+from hdbscan import HDBSCAN
+from optics import OPTICS
+
+
+def calculate_cluster(data, n_points, algo):
     print('Filtering {} points of data'.format(n_points))
     coords = data.loc[1:n_points, ['Latitude', 'Longitude']].values
 
@@ -13,11 +18,10 @@ def calculate_cluster(data, n_points, algo='OPTICS'):
                              metric='haversine'
                              )
     else:
-        clustering = None
+        raise Exception('Algorithm "{}" provided is not valid'.format(algo))
 
     print('Running fit_predict on {} data points with algo {}'.format(n_points, algo))
     clustering.fit_predict(coords)
-    put_metric(algo, 'fit_predict', n_points, int(L.ts() - L.lastop))
 
     print('Getting labels from clustering')
     cluster_labels = clustering.labels_
@@ -49,3 +53,4 @@ def gen_results(centermost_points, csv_file, title):
 
     print('Saving result points to {}'.format(csv_file))
     rs.to_csv(csv_file, encoding='utf-8')
+
